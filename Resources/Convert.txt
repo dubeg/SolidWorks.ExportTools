@@ -1,0 +1,1 @@
+Get-ChildItem -Filter *.svg | ForEach-Object { magick -background none -size x128 $_.FullName ($_.BaseName + ".png") }
