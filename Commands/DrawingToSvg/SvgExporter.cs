@@ -4,6 +4,7 @@ using MathNet.Numerics.LinearAlgebra;
 using Dubeg.Sw.ExportTools.Utils;
 using SolidWorks.Interop.sldworks;
 using SolidWorks.Interop.swconst;
+using System.Linq;
 
 namespace Dubeg.Sw.ExportTools.Commands.DrawingToSvg;
 
@@ -132,8 +133,18 @@ public partial class SvgExporter(ISldWorks _app) {
                         if (!note.IsBomBalloon()) continue;
                         if (note != null) {
                             text = note.GetText();
+                            var balloonId = (!string.IsNullOrEmpty(text) && text.All(char.IsDigit))
+                                ? $"balloon-{text}"
+                                : $"balloon-{Guid.NewGuid().ToString().Split('-')[0]}";
                             var textCoordinates = NxPoint.FromCoords(x, y);
-                            // if (!note.HasBalloon())
+                            
+                            // Start a group for this balloon annotation
+                            writer.StartGroup(balloonId, "balloon-annotation", new Dictionary<string, string> {
+                                { "balloon-number", text },
+                                // { "item-number", partNumber }, // TODO: fetch from BOM table.
+                                { "content", text }
+                            });
+                            // writer.AddTitle($"Balloon {text}");
                             if (note.HasBalloon()) {
                                 // --------------------------
                                 // 1. Draw the balloon shape (circle)
@@ -220,6 +231,9 @@ public partial class SvgExporter(ISldWorks _app) {
                                     UpdateBounds(textCoordinates.X + textWidth / 2, textCoordinates.Y + textHeight / 2);
                                 }
                             }
+                            
+                            // End the balloon annotation group
+                            writer.EndGroup();
                         }
                         break;
                     default:
@@ -319,9 +333,9 @@ public partial class SvgExporter(ISldWorks _app) {
     /// </summary>
     private string ColorRefToHex(int colorRef) {
         if (colorRef == -1) return "#000000";
-        int r = colorRef & 0xFF;
-        int g = (colorRef >> 8) & 0xFF;
-        int b = (colorRef >> 16) & 0xFF;
+        var r = colorRef & 0xFF;
+        var g = (colorRef >> 8) & 0xFF;
+        var b = (colorRef >> 16) & 0xFF;
         return $"#{r:X2}{g:X2}{b:X2}";
     }
 

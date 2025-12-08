@@ -11,6 +11,7 @@ public class SvgWriter {
     private readonly XElement _svg;
     private readonly XElement _contentGroup;
     private readonly XNamespace _ns = "http://www.w3.org/2000/svg";
+    private readonly Stack<XElement> _groupStack = new Stack<XElement>();
 
     public double Width { get; }
     public double Height { get; }
@@ -30,6 +31,10 @@ public class SvgWriter {
         _svg.Add(_contentGroup);
     }
 
+    private XElement GetCurrentContainer() {
+        return _groupStack.Count > 0 ? _groupStack.Peek() : _contentGroup;
+    }
+
     public void AddPath(string pathData, string strokeColor, double strokeWidth, string fillColor = "none") {
         var path = new XElement(_ns + "path",
             new XAttribute("d", pathData),
@@ -37,7 +42,7 @@ public class SvgWriter {
             new XAttribute("stroke-width", strokeWidth),
             new XAttribute("fill", fillColor)
         );
-        _contentGroup.Add(path);
+        GetCurrentContainer().Add(path);
     }
     
     public void AddLine(double x1, double y1, double x2, double y2, string strokeColor, double strokeWidth) {
@@ -49,7 +54,7 @@ public class SvgWriter {
             new XAttribute("stroke", strokeColor),
             new XAttribute("stroke-width", strokeWidth)
         );
-        _contentGroup.Add(line);
+        GetCurrentContainer().Add(line);
     }
 
     public void AddCircle(double cx, double cy, double r, string strokeColor, double strokeWidth, string fillColor = "none") {
@@ -61,7 +66,7 @@ public class SvgWriter {
             new XAttribute("stroke-width", strokeWidth),
             new XAttribute("fill", fillColor)
         );
-        _contentGroup.Add(circle);
+        GetCurrentContainer().Add(circle);
     }
 
     public void AddEllipse(double cx, double cy, double rx, double ry, double rotation, string strokeColor, double strokeWidth, string fillColor = "none") {
@@ -79,7 +84,7 @@ public class SvgWriter {
             ellipse.Add(new XAttribute("transform", $"rotate({Format(rotation)}, {Format(cx)}, {Format(cy)})"));
         }
 
-        _contentGroup.Add(ellipse);
+        GetCurrentContainer().Add(ellipse);
     }
 
     public void AddText(double x, double y, string text, string fontFamily, double fontSize, string color, double rotation = 0, string textAnchor = "start") {
@@ -98,7 +103,41 @@ public class SvgWriter {
             textElement.Add(new XAttribute("transform", $"rotate({Format(rotation)}, {Format(x)}, {Format(y)})"));
         }
 
-        _contentGroup.Add(textElement);
+        GetCurrentContainer().Add(textElement);
+    }
+
+    public void StartGroup(string id = null, string className = null, Dictionary<string, string> dataAttributes = null) {
+        var group = new XElement(_ns + "g");
+        
+        if (!string.IsNullOrEmpty(id)) {
+            group.Add(new XAttribute("id", id));
+        }
+        
+        if (!string.IsNullOrEmpty(className)) {
+            group.Add(new XAttribute("class", className));
+        }
+        
+        if (dataAttributes != null) {
+            foreach (var kvp in dataAttributes) {
+                group.Add(new XAttribute("data-" + kvp.Key, kvp.Value));
+            }
+        }
+        
+        GetCurrentContainer().Add(group);
+        _groupStack.Push(group);
+    }
+
+    public void EndGroup() {
+        if (_groupStack.Count > 0) {
+            _groupStack.Pop();
+        }
+    }
+
+    public void AddTitle(string text) {
+        if (string.IsNullOrEmpty(text)) return;
+        
+        var title = new XElement(_ns + "title", text);
+        GetCurrentContainer().Add(title);
     }
 
     public void SetViewBox(double minX, double minY, double width, double height) {
