@@ -9,7 +9,7 @@ namespace Dubeg.Sw.ExportTools.Commands.DrawingToSvg;
 
 public partial class SvgExporter(ISldWorks _app) {
 
-    public void Export(string filePath) {
+    public void Export(string filePath, bool fitToContent = false) {
         double MeterToMM(double value) => value * 1000.0;
         // --
         var model = _app.IActiveDoc2;
@@ -30,6 +30,19 @@ public partial class SvgExporter(ISldWorks _app) {
         var sheetWidth = MeterToMM(props[5]);
         var sheetHeight = MeterToMM(props[6]);
         var writer = new SvgWriter(sheetWidth, sheetHeight);
+
+        // Initialize bounds tracking for fit-to-content
+        var minX = double.MaxValue;
+        var minY = double.MaxValue;
+        var maxX = double.MinValue;
+        var maxY = double.MinValue;
+        
+        void UpdateBounds(double x, double y) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+        }
 
         // Y-flip transform matrix: flips Y-axis and translates to keep coordinates positive
         // | 1   0   0  |   | x |   | x            |
@@ -89,6 +102,9 @@ public partial class SvgExporter(ISldWorks _app) {
                     var pt = points[i];
                     var (svgX, svgY) = ViewToSvg(pt.X, pt.Y);
                     pathBuilder.Append($" {(isFirst ? "M" : "L")} {Format(svgX)} {Format(svgY)}");
+                    if (fitToContent) {
+                        UpdateBounds(svgX, svgY);
+                    }
                 }
                 writer.AddPath(pathBuilder.ToString(), color, strokeWidth);
             }
@@ -113,9 +129,11 @@ public partial class SvgExporter(ISldWorks _app) {
                         var colorRef = ann.Color;
                         var hexColor = ColorRefToHex(colorRef);
                         var note = (INote)ann.GetSpecificAnnotation();
+                        if (!note.IsBomBalloon()) continue;
                         if (note != null) {
                             text = note.GetText();
                             var textCoordinates = NxPoint.FromCoords(x, y);
+                            // if (!note.HasBalloon())
                             if (note.HasBalloon()) {
                                 // --------------------------
                                 // 1. Draw the balloon shape (circle)
@@ -137,6 +155,11 @@ public partial class SvgExporter(ISldWorks _app) {
                                     writer.AddCircle(cx, cy, balloonRadius, hexColor, 0.25);
                                     textCoordinates.X = cx; 
                                     textCoordinates.Y = cy;
+                                    if (fitToContent) {
+                                        // Account for circle bounds (center ± radius)
+                                        UpdateBounds(cx - balloonRadius, cy - balloonRadius);
+                                        UpdateBounds(cx + balloonRadius, cy + balloonRadius);
+                                    }
                                     // WORKAROUND: (doesn't work very well however)
                                     // writer.AddCircle(x, y, balloonRadius - 0.8, hexColor, 0.25);
                                 }
@@ -153,6 +176,10 @@ public partial class SvgExporter(ISldWorks _app) {
                                             var (lx1, ly1) = AnnotationToSvg(leaderPoints[pi], leaderPoints[pi + 1]);
                                             var (lx2, ly2) = AnnotationToSvg(leaderPoints[pi + 3], leaderPoints[pi + 4]);
                                             writer.AddLine(lx1, ly1, lx2, ly2, hexColor, 0.25);
+                                            if (fitToContent) {
+                                                UpdateBounds(lx1, ly1);
+                                                UpdateBounds(lx2, ly2);
+                                            }
                                         }
                                     }
                                 }
@@ -185,6 +212,13 @@ public partial class SvgExporter(ISldWorks _app) {
                                 }
                                 var lineHeight = fontSize * 1.2;
                                 writer.AddText(textCoordinates.X, textCoordinates.Y, text, fontFamily, fontSize, hexColor, 0, "middle");
+                                if (fitToContent) {
+                                    // Approximate text bounds (rough estimate based on font size and character count)
+                                    var textWidth = text.Length * fontSize * 0.6; // Rough approximation
+                                    var textHeight = fontSize * 1.2;
+                                    UpdateBounds(textCoordinates.X - textWidth / 2, textCoordinates.Y - textHeight / 2);
+                                    UpdateBounds(textCoordinates.X + textWidth / 2, textCoordinates.Y + textHeight / 2);
+                                }
                             }
                         }
                         break;
@@ -193,6 +227,18 @@ public partial class SvgExporter(ISldWorks _app) {
                 }
             }
         }
+        
+        // Apply fit-to-content viewBox if requested
+        if (fitToContent && minX != double.MaxValue && maxX != double.MinValue) {
+            const double padding = 5.0; // mm padding around content
+            var contentMinX = minX - padding;
+            var contentMinY = minY - padding;
+            var contentWidth = (maxX - minX) + (2 * padding);
+            var contentHeight = (maxY - minY) + (2 * padding);
+            writer.SetViewBox(contentMinX, contentMinY, contentWidth, contentHeight);
+            writer.SetDimensions(contentWidth, contentHeight);
+        }
+        
         writer.Save(filePath);
     }
 

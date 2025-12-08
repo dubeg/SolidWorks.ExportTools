@@ -101,6 +101,24 @@ public class SvgWriter {
         _contentGroup.Add(textElement);
     }
 
+    public void SetViewBox(double minX, double minY, double width, double height) {
+        var viewBoxAttr = _svg.Attribute("viewBox");
+        if (viewBoxAttr != null) {
+            viewBoxAttr.Value = $"{Format(minX)} {Format(minY)} {Format(width)} {Format(height)}";
+        }
+    }
+
+    public void SetDimensions(double width, double height) {
+        void SetAttr(string attrName, double value) {
+            var attr = _svg.Attribute(attrName);
+            if (attr != null) {
+                attr.Value = $"{Format(value)}";
+            }
+        }
+        SetAttr("width", width);
+        SetAttr("height", height);
+    }
+
     public void Save(string filePath) {
         var doc = new XDocument(_svg);
         doc.Save(filePath);
