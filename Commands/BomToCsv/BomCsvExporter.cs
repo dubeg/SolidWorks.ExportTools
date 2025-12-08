@@ -38,11 +38,11 @@ public class BomCsvExporter {
         if (sheetView == null) {
             return bomData;
         }
-        var tableAnnotations = (ITableAnnotation[])sheetView.GetTableAnnotations();
+        var tableAnnotations = (object[])sheetView.GetTableAnnotations();
         if (tableAnnotations == null || tableAnnotations.Length == 0) {
             return bomData;
         }
-        foreach (var table in tableAnnotations) {
+        foreach (TableAnnotation table in tableAnnotations) {
             if (table == null) continue;
             if (table.Type != (int)swTableAnnotationType_e.swTableAnnotation_BillOfMaterials) {
                 continue;
