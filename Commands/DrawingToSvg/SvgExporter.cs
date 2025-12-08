@@ -365,8 +365,6 @@ public partial class SvgExporter(ISldWorks _app) {
             // Get table annotations from the sheet
             var view = (IView)drawing.GetFirstView(); // Sheet view
             if (view == null) return bomData;
-            
-            view = (IView)view.GetNextView(); // First actual view
             while (view != null) {
                 var annotations = (object[])view.GetTableAnnotations();
                 if (annotations != null) {

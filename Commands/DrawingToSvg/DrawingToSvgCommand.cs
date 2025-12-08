@@ -29,7 +29,7 @@ namespace Dubeg.Sw.ExportTools.Commands.DrawingToSvg {
                 var outFilePath = GetOutputFilePath(App.IActiveDoc2.GetPathName(), "svg");
 
                 var exporter = new SvgExporter(App);
-                exporter.Export(outFilePath, fitToContent: true);
+                exporter.Export(outFilePath, fitToContent: true, includeBomMetadata: true);
 
                 System.Diagnostics.Process.Start("explorer", $""" "{outFilePath}" """);
 
