@@ -10,7 +10,7 @@ namespace Dubeg.Sw.ExportTools.Commands.DrawingToSvg;
 
 public partial class SvgExporter(ISldWorks _app) {
 
-    public void Export(string filePath, bool fitToContent = false) {
+    public void Export(string filePath, bool fitToContent = false, bool includeBomMetadata = false) {
         double MeterToMM(double value) => value * 1000.0;
         // --
         var model = _app.IActiveDoc2;
@@ -21,10 +21,6 @@ public partial class SvgExporter(ISldWorks _app) {
         var sheet = drawing.IGetCurrentSheet();
         var sheetView = drawing.GetViewBySheetName(sheet.GetName());
         var sheetScale2 = sheetView.ScaleDecimal;
-
-        var sheetCoords = (double[])sheetView.GetXform();
-        var sheetToSketch = (MathTransform)sheetView.IGetSketch().ModelToSketchTransform;
-        var arrSheetToSketch = (double[])sheetToSketch.ArrayData;
 
         var props = (double[])sheet.GetProperties2(); // [ paperSize, templateIn, scale1, scale2, firstAngle, width, height, ? ]
         var sheetScale = props[2] / props[3];
@@ -59,14 +55,13 @@ public partial class SvgExporter(ISldWorks _app) {
             var result = yFlipTransform * pt;
             return (result[0], result[1]);
         }
+        
+        // Parse BOM table if metadata inclusion is requested
+        var bomData = includeBomMetadata ? ParseBomTable(drawing) : new Dictionary<string, BomItem>();
+        
         var views = drawing.GetViewsForSheet(sheet);
-        MathTransform modelToSketch;
-        MathTransform modelToView;
         foreach (var view in views) {
             var viewName = view.GetName2();
-            modelToView = view.ModelToViewTransform;
-            var sketch = view.IGetSketch();
-            modelToSketch = sketch.ModelToSketchTransform;
 
             // Get the view's origin position on the sheet (where sketch origin projects to)
             var (viewOriginX, viewOriginY) = view.GetPositionAsTuple();
@@ -138,13 +133,27 @@ public partial class SvgExporter(ISldWorks _app) {
                                 : $"balloon-{Guid.NewGuid().ToString().Split('-')[0]}";
                             var textCoordinates = NxPoint.FromCoords(x, y);
                             
-                            // Start a group for this balloon annotation
-                            writer.StartGroup(balloonId, "balloon-annotation", new Dictionary<string, string> {
+                            // Build data attributes for the balloon group
+                            var dataAttributes = new Dictionary<string, string> {
                                 { "balloon-number", text },
-                                // { "item-number", partNumber }, // TODO: fetch from BOM table.
                                 { "content", text }
-                            });
-                            // writer.AddTitle($"Balloon {text}");
+                            };
+                            
+                            // Add BOM metadata if available
+                            if (includeBomMetadata && bomData.TryGetValue(text, out var bomItem)) {
+                                if (!string.IsNullOrEmpty(bomItem.PartNumber)) {
+                                    dataAttributes["part-number"] = bomItem.PartNumber;
+                                }
+                                if (!string.IsNullOrEmpty(bomItem.Name)) {
+                                    dataAttributes["name"] = bomItem.Name;
+                                }
+                                if (!string.IsNullOrEmpty(bomItem.Specification)) {
+                                    dataAttributes["specification"] = bomItem.Specification;
+                                }
+                            }
+                            
+                            // Start a group for this balloon annotation
+                            writer.StartGroup(balloonId, "balloon-annotation", dataAttributes);
                             if (note.HasBalloon()) {
                                 // --------------------------
                                 // 1. Draw the balloon shape (circle)
@@ -340,4 +349,97 @@ public partial class SvgExporter(ISldWorks _app) {
     }
 
     private string Format(double value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Parses the BOM table from a drawing and returns a dictionary mapping item numbers to BOM data.
+    /// Supports French BOM headers: ITEM, QTE, # PIÈCE, NOM, SPÉCIFICATION
+    /// </summary>
+    private Dictionary<string, BomItem> ParseBomTable(DrawingDoc drawing) {
+        var bomData = new Dictionary<string, BomItem>();
+        
+        try {
+            // Get the first sheet
+            var sheet = (Sheet)drawing.GetCurrentSheet();
+            if (sheet == null) return bomData;
+            
+            // Get table annotations from the sheet
+            var view = (IView)drawing.GetFirstView(); // Sheet view
+            if (view == null) return bomData;
+            
+            view = (IView)view.GetNextView(); // First actual view
+            while (view != null) {
+                var annotations = (object[])view.GetTableAnnotations();
+                if (annotations != null) {
+                    foreach (var ann in annotations) {
+                        var tableAnn = ann as ITableAnnotation;
+                        if (tableAnn == null) continue;
+                        
+                        // Check if this is a BOM table
+                        if (tableAnn.Type != (int)swTableAnnotationType_e.swTableAnnotation_BillOfMaterials) {
+                            continue;
+                        }
+                        
+                        // Parse the BOM table
+                        var rowCount = tableAnn.RowCount;
+                        var colCount = tableAnn.ColumnCount;
+                        
+                        if (rowCount < 2 || colCount < 1) continue;
+                        
+                        // Find column indices by examining the header row
+                        var itemColIndex = -1;
+                        var partNumberColIndex = -1;
+                        var nameColIndex = -1;
+                        var specificationColIndex = -1;
+                        
+                        for (var col = 0; col < colCount; col++) {
+                            var headerText = tableAnn.DisplayedText2[0, col, true];
+                            if (string.IsNullOrEmpty(headerText)) continue;
+                            
+                            var header = headerText.Trim().ToUpperInvariant();
+                            
+                            if (header.Contains("ITEM") || header == "REPÈRE") {
+                                itemColIndex = col;
+                            } else if (header.Contains("PIÈCE") || header.Contains("PIECE") || header == "# PIÈCE") {
+                                partNumberColIndex = col;
+                            } else if (header.Contains("NOM") || header.Contains("DESCRIPTION")) {
+                                nameColIndex = col;
+                            } else if (header.Contains("SPÉCIFICATION") || header.Contains("SPECIFICATION") || header.Contains("SPEC")) {
+                                specificationColIndex = col;
+                            }
+                        }
+                        
+                        // If we didn't find the item column, we can't map the data
+                        if (itemColIndex == -1) continue;
+                        
+                        // Parse data rows (skip header row 0)
+                        for (var row = 1; row < rowCount; row++) {
+                            var itemNumber = tableAnn.DisplayedText2[row, itemColIndex, true]?.Trim();
+                            if (string.IsNullOrEmpty(itemNumber)) continue;
+                            
+                            var bomItem = new BomItem {
+                                ItemNumber = itemNumber,
+                                PartNumber = partNumberColIndex >= 0 ? tableAnn.DisplayedText2[row, partNumberColIndex, true]?.Trim() : null,
+                                Name = nameColIndex >= 0 ? tableAnn.DisplayedText2[row, nameColIndex, true]?.Trim() : null,
+                                Specification = specificationColIndex >= 0 ? tableAnn.DisplayedText2[row, specificationColIndex, true]?.Trim() : null
+                            };
+                            
+                            // Store in dictionary (use item number as key)
+                            if (!bomData.ContainsKey(itemNumber)) {
+                                bomData[itemNumber] = bomItem;
+                            }
+                        }
+                        
+                        // Found and parsed a BOM table, return the data
+                        return bomData;
+                    }
+                }
+                
+                view = (IView)view.GetNextView();
+            }
+        } catch {
+            // Silent failure - return empty dictionary
+        }
+        
+        return bomData;
+    }
 }

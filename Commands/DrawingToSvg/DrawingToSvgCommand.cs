@@ -44,7 +44,7 @@ namespace Dubeg.Sw.ExportTools.Commands.DrawingToSvg {
                     model.SketchManager.DisplayWhenAdded = true;
                     model.SketchManager.AddToDB = false;
                     model.FeatureManager.UpdateFeatureTree();
-                    model.EditRebuild3();
+                    // model.EditRebuild3();
                 }
             }
         }
