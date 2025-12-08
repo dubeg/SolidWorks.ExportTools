@@ -125,4 +125,10 @@ public enum AddinCommandTypes {
     [CommandItemInfo(true, true, WorkspaceTypes_e.Drawing, true)]
     [Icon(typeof(Resources), nameof(Resources.Database))]
     BomToCsv,
+
+    [Title("Test Limited Detailing")]
+    [Description("Test IsInLimitedDetailingMode() detection method")]
+    [CommandItemInfo(true, true, WorkspaceTypes_e.Drawing, true)]
+    [Icon(typeof(Resources), nameof(Resources.logs))]
+    TestLimitedDetailing,
 }

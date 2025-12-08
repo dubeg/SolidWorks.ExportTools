@@ -45,6 +45,7 @@ public class AddIn : SwAddInEx {
     private SheetToJpgCommand _sheetToJpgCommand;
     private DrawingToSvgCommand _drawingToSvgCommand;
     private BomToCsvCommand _bomToCsvCommand;
+    private TestLimitedDetailingCommand _testLimitedDetailingCommand;
     private LoggingSettings _loggingSettings;
 
     public AddIn() {
@@ -116,6 +117,7 @@ public class AddIn : SwAddInEx {
             _sheetToJpgCommand = new SheetToJpgCommand(UiManager, Application, defaultSettings, this);
             _drawingToSvgCommand = new DrawingToSvgCommand(UiManager, Application, defaultSettings, this);
             _bomToCsvCommand = new BomToCsvCommand(UiManager, Application, defaultSettings, this);
+            _testLimitedDetailingCommand = new TestLimitedDetailingCommand(UiManager, Application, defaultSettings, this);
 
             UiManager.InitAndHideForm(() => _logsForm = new FrmLogs() {
                 LogsFolderPath = _loggingSettings.LogDirPath
@@ -152,6 +154,7 @@ public class AddIn : SwAddInEx {
                         case AddinCommandTypes.DrawingToJpg: _sheetToJpgCommand.RunForCurrentSheet(); break;
                         case AddinCommandTypes.DrawingToSvg: _drawingToSvgCommand.RunForCurrentSheet(); break;
                         case AddinCommandTypes.BomToCsv: _bomToCsvCommand.RunForCurrentSheet(); break;
+                        case AddinCommandTypes.TestLimitedDetailing: _testLimitedDetailingCommand.Run(); break;
                     }
                 }
                 catch (Exception ex) {

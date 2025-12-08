@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
 using Dubeg.Sw.ExportTools.Enums;
 using SolidWorks.Interop.sldworks;
 using SolidWorks.Interop.swconst;
@@ -22,6 +24,13 @@ public record NxRectangle {
 }
 
 public static class SolidWorksExtensions {
+
+    // P/Invoke declarations for Windows API
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int GetWindowText(long hWnd, StringBuilder lpString, int nMaxCount);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int GetWindowTextLength(long hWnd);
 
     public static void SetPosition(this IView view, double x, double y) => view.Position = new double[] { x, y };
 
@@ -755,6 +764,98 @@ public static class SolidWorksExtensions {
         objBounds[4] *= scale;
 
         obj.Boundaries = objBounds;
+    }
+
+    /// <summary>
+    /// Gets the window title from a window handle.
+    /// </summary>
+    /// <param name="hWnd">The window handle.</param>
+    /// <returns>The window title, or empty string if unable to retrieve.</returns>
+    private static string GetWindowTitle(long hWnd) {
+        if (hWnd == 0) {
+            return string.Empty;
+        }
+
+        try {
+            int length = GetWindowTextLength(hWnd);
+            if (length == 0) {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder(length + 1);
+            GetWindowText(hWnd, builder, builder.Capacity);
+            return builder.ToString();
+        }
+        catch {
+            return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Detects when a drawing is opened in limited detailing mode.
+    /// </summary>
+    /// <param name="app">The SolidWorks application instance.</param>
+    /// <returns>True if the active document is a drawing in limited detailing mode; otherwise, false.</returns>
+    /// <remarks>
+    /// Alternative/additional verification could check if the Feature tree is empty,
+    /// as limited detailing mode typically has no features in the tree:
+    /// <code>
+    /// var featureCount = activeDoc.GetFeatureCount();
+    /// var hasFeatures = featureCount > 0;
+    /// // Limited detailing mode should have no features
+    /// </code>
+    /// </remarks>
+    public static bool IsInLimitedDetailingMode(this ISldWorks app) {
+        // Check if there's an active document
+        var activeDoc = app.IActiveDoc2;
+        if (activeDoc == null) {
+            return false;
+        }
+        // Check if the active document is a drawing
+        if (activeDoc.GetType() != (int)swDocumentTypes_e.swDocDRAWING) {
+            return false;
+        }
+        // Get the window title and check if it contains "[Detailing - Limited]"
+        try {
+            var frame = (Frame)app.Frame();
+            if (frame == null) {
+                return false;
+            }
+            var hWnd = frame.GetHWndx64();
+            var windowTitle = GetWindowTitle(hWnd);
+            if (string.IsNullOrEmpty(windowTitle)) {
+                return false;
+            }
+            return windowTitle.Contains("[Detailing - Limited]");
+        }
+        catch {
+            // If there's any error accessing the frame or title, return false
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Checks if the active document is a drawing in detailing mode.
+    /// </summary>
+    /// <param name="app">The SolidWorks application instance.</param>
+    /// <returns>True if the active document is a drawing in detailing mode (limited or full); otherwise, false.</returns>
+    /// <remarks>
+    /// This checks the general detailing mode flag, not specifically limited detailing mode.
+    /// Use <see cref="IsInLimitedDetailingMode"/> to specifically detect limited detailing mode.
+    /// </remarks>
+    public static bool IsInDetailingMode(this ISldWorks app) {
+        // Check if there's an active document
+        var activeDoc = app.IActiveDoc2;
+        if (activeDoc == null) {
+            return false;
+        }
+        // Check if the active document is a drawing
+        if (activeDoc.GetType() != (int)swDocumentTypes_e.swDocDRAWING) {
+            return false;
+        }
+        // Cast to DrawingDoc and check IsDetailingMode
+        var drawingDoc = (DrawingDoc)activeDoc;
+        return drawingDoc.IsDetailingMode();
     }
 }
 
