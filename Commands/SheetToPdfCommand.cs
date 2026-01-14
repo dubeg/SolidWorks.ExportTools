@@ -33,7 +33,7 @@ public class SheetToPdfCommand : CommandBase<AppSettings> {
         }
 
         EnsureOutputDirectoryExists();
-        var outFilePath = GetOutputFilePath(swModel.GetPathName());
+        var outFilePath = GetOutputFilePath(swModel.GetPathName(), "pdf");
         var (success, errors) = App.SaveSheetAsPdf(sheetView, outFilePath, true, false);
         if (!success) {
             throw new ExportException($"Failed to export {Path.GetFileName(outFilePath)} to PDF: {string.Join(", ", errors)}") {

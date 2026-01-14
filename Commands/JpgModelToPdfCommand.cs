@@ -29,7 +29,7 @@ public class JpgModelToPdfCommand : CommandBase<AppSettings> {
         
         EnsureOutputDirectoryExists();
         var doc = SwApp.Documents.Active;
-        var outFilePath = GetOutputFilePath(doc.Path);
+        var outFilePath = GetOutputFilePath(doc.Path, "pdf");
 
         var model = App.IActiveDoc2;
         if (model == null) {
